@@ -297,7 +297,7 @@ def download_and_replace_launcher(url):
 def check_launcher_update():
     try:
         # 👇 Сюда вставляешь ссылку на JSON-файл
-        url = "https://raw.githubusercontent.com/Robon99/Gamelaunchertest1/refs/heads/main/update_launcher.json"
+        url = "https://raw.githubusercontent.com/Robon99/Gamelaunchertest1/main/update_launcher.json"
         response = requests.get(url)
         update_data = response.json()
 

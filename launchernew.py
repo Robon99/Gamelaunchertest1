@@ -288,7 +288,7 @@ def download_and_replace_launcher(url):
 def check_launcher_update():
     try:
         # 👇 Сюда вставляешь ссылку на JSON-файл
-        url = "https://raw.githubusercontent.com/Robon99/Gamelaunchertest1/refs/heads/main/update_launcher.json"
+        url = "https://raw.githubusercontent.com/Robon99/Gamelaunchertest1/releases/download/updatelauncher/update_launcher.json"
         response = requests.get(url)
         update_data = response.json()
 
@@ -359,7 +359,7 @@ download_button = ttk.Button(main_panel, text="Скачать игру")
 download_button.pack(pady=10)
 add_hover_effect(download_button)
 
-play_button = ttk.Button(main_panel, text="Играть")
+play_button = ttk.Button(main_panel, text="ХУЯТЬ")
 play_button.pack(pady=10)
 add_hover_effect(play_button)
 play_button.pack_forget()

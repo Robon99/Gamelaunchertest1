@@ -52,7 +52,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.1"
+LAUNCHER_VERSION = "1.2"
 GAMES_FILE = "games.json"
 
 downloading_game = {"name": None}

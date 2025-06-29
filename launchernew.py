@@ -52,7 +52,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.2"
+LAUNCHER_VERSION = "1.3"
 GAMES_FILE = "games.json"
 
 downloading_game = {"name": None}
@@ -64,6 +64,15 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def search_games(*args):
+    query = search_var.get().lower()
+    game_listbox.delete(0, tk.END)
+    visible_games.clear()
+    for game in games:
+        if query in game["name"].lower():
+            game_listbox.insert(tk.END, game["name"])
+            visible_games.append(game)
 
 def update_games_json():
     url = "https://github.com/Robon99/Gamelaunchertest1/releases/download/Games/games.json"  # замени ссылку на свою
@@ -334,6 +343,13 @@ style.map("TButton", background=[("active", "#ff8800")])
 left_panel = tk.Frame(root, bg="#1c1c1c", width=200)
 left_panel.pack(side="left", fill="y")
 
+search_var = tk.StringVar()
+
+search_entry = tk.Entry(left_panel, textvariable=search_var, font=("Arial", 12))
+search_entry.pack(padx=10, pady=5, fill="x")
+
+search_var.trace_add("write", lambda *args: search_games())
+
 game_listbox = tk.Listbox(left_panel, bg="#2a2a2a", fg="#ff8800", font=("Arial", 12))
 game_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -359,7 +375,7 @@ download_button = ttk.Button(main_panel, text="Скачать игру")
 download_button.pack(pady=10)
 add_hover_effect(download_button)
 
-play_button = ttk.Button(main_panel, text="ХУЯТЬ")
+play_button = ttk.Button(main_panel, text="Играть")
 play_button.pack(pady=10)
 add_hover_effect(play_button)
 play_button.pack_forget()
@@ -666,6 +682,7 @@ loading_label = tk.Label(loading_screen, text="Загрузка данных..."
 loading_label.pack(expand=True)
 
 def finish_loading():
+    search_games()
     load_settings()
     load_played_time()
     global_age_override["value"] = user_settings.get("age_confirmed", False)

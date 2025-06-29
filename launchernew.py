@@ -54,7 +54,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.4.4"
+LAUNCHER_VERSION = "1.4.5"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -67,6 +67,22 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def add_friend(sender, recipient):
+    # Проверим, что пользователь не отправляет заявку самому себе
+    if sender == recipient:
+        return False, "Нельзя добавить самого себя."
+
+    # Проверим, существует ли получатель
+    url_check = f"{FIREBASE_URL}/users/{recipient}.json"
+    response = requests.get(url_check)
+    if response.status_code != 200 or response.json() is None:
+        return False, "Пользователь не найден."
+
+    # Отправим заявку в друзья
+    url_request = f"{FIREBASE_URL}/users/{recipient}/friend_requests/{sender}.json"
+    requests.put(url_request, json=True)
+    return True, f"Заявка отправлена {recipient}"
 
 def chat_id(user1, user2):
     return "_".join(sorted([user1, user2]))  # Пример: 'Alice_Bob'
@@ -171,6 +187,7 @@ def show_friends_window():
         messagebox.showinfo("Готово", f"{selected} теперь ваш друг!")
         update_requests()
         update_friends()
+        update_chat(selected)
 
     ttk.Button(win, text="Принять заявку", command=accept_selected_request).pack(pady=(0, 10))
 
@@ -260,9 +277,17 @@ def show_friends_window():
 
     ttk.Button(win, text="Отправить", command=send).pack(pady=5)
 
+    # Периодическое обновление чата
+    def periodic_chat_update():
+        if friend_listbox.curselection():
+            selected = friend_listbox.get(friend_listbox.curselection()[0])
+            update_chat(selected)
+        win.after(3000, periodic_chat_update)  # каждые 3 секунды
+
     # Начальное обновление списков
     update_requests()
     update_friends()
+    periodic_chat_update()  # запустить обновление
 
 def register_user(username, password):
     url = f"{FIREBASE_URL}/users/{username}.json"

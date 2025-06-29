@@ -54,7 +54,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.4.3"
+LAUNCHER_VERSION = "1.4.4"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -67,6 +67,34 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def chat_id(user1, user2):
+    return "_".join(sorted([user1, user2]))  # Пример: 'Alice_Bob'
+
+def get_messages(user1, user2):
+    url = f"{FIREBASE_URL}/messages/{chat_id(user1, user2)}.json"
+    response = requests.get(url)
+    data = response.json()
+    return data or {}
+
+def send_message(sender, recipient, message):
+    if not message.strip():
+        print("Пустое сообщение. Не отправлено.")
+        return
+
+    timestamp = str(int(time.time() * 1000))  # Миллисекунды — ключ
+
+    chat_path = f"{FIREBASE_URL}/messages/{chat_id(sender, recipient)}/{timestamp}.json"
+    payload = {
+        "from": sender,
+        "message": message
+    }
+
+    response = requests.put(chat_path, json=payload)
+    if response.status_code == 200:
+        print(f"Сообщение от {sender} к {recipient} отправлено.")
+    else:
+        print(f"Ошибка при отправке сообщения: {response.text}")
 
 def show_account_window():
     win = tk.Toplevel()

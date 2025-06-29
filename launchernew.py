@@ -54,7 +54,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.4.0"
+LAUNCHER_VERSION = "1.4.1"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -68,6 +68,11 @@ download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
 
+def get_friend_requests(current_user):
+    url = f"{FIREBASE_URL}/users/{current_user}/friend_requests.json"
+    response = requests.get(url)
+    return response.json() or {}
+
 def show_friends_window():
     if not current_user["name"]:
         messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
@@ -75,8 +80,9 @@ def show_friends_window():
 
     win = tk.Toplevel()
     win.title("Друзья и чат")
-    win.geometry("400x500")
+    win.geometry("500x600")
 
+    # ===== Добавить друга =====
     tk.Label(win, text="Добавить друга:").pack()
     entry_friend = tk.Entry(win)
     entry_friend.pack()
@@ -84,14 +90,32 @@ def show_friends_window():
     def add():
         ok, msg = add_friend(current_user["name"], entry_friend.get())
         messagebox.showinfo("Результат", msg)
-        update_list()
+        update_requests()
+        update_friends()
 
-    ttk.Button(win, text="Добавить", command=add).pack()
+    ttk.Button(win, text="Добавить", command=add).pack(pady=5)
 
+    # ===== Входящие заявки =====
+    tk.Label(win, text="Заявки в друзья:").pack()
+    request_listbox = tk.Listbox(win, height=5)
+    request_listbox.pack(fill="x", pady=5)
+
+    def accept_selected_request():
+        selected = request_listbox.get(tk.ACTIVE)
+        if selected:
+            accept_friend(current_user["name"], selected)
+            messagebox.showinfo("Готово", f"{selected} теперь ваш друг!")
+            update_requests()
+            update_friends()
+
+    ttk.Button(win, text="Принять заявку", command=accept_selected_request).pack()
+
+    # ===== Список друзей =====
     tk.Label(win, text="Мои друзья:").pack()
     friend_listbox = tk.Listbox(win)
     friend_listbox.pack(fill="both", expand=True)
 
+    # ===== Чат =====
     chat_log = tk.Text(win, height=10)
     chat_log.pack()
     chat_log.configure(state="disabled")
@@ -99,6 +123,76 @@ def show_friends_window():
     chat_entry = tk.Entry(win)
     chat_entry.pack(fill="x")
 
+    def update_requests():
+        request_listbox.delete(0, tk.END)
+        requests_data = get_friend_requests(current_user["name"])
+        for name in requests_data:
+            request_listbox.insert(tk.END, name)
+
+    def update_friends():
+        friend_listbox.delete(0, tk.END)
+        friends = get_friends(current_user["name"])
+        for name in friends:
+            friend_listbox.insert(tk.END, name)
+
+    def get_friends(username):
+        url = f"{FIREBASE_URL}/users/{username}/friends.json"
+        response = requests.get(url)
+        return response.json() or {}
+
+    def get_friend_requests(username):
+        url = f"{FIREBASE_URL}/users/{username}/friend_requests.json"
+        response = requests.get(url)
+        return response.json() or {}
+
+    def accept_friend(current_user, friend_username):
+        # Добавить друг друга
+        requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
+        requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
+        # Удалить запрос
+        requests.delete(f"{FIREBASE_URL}/users/{current_user}/friend_requests/{friend_username}.json")
+
+    def send():
+        msg = chat_entry.get().strip()
+        if not msg:
+            return
+        selected = friend_listbox.get(tk.ACTIVE)
+        if not selected:
+            return
+        send_message(current_user["name"], selected, msg)
+        chat_entry.delete(0, tk.END)
+        update_chat(selected)
+
+    def update_chat(friend):
+        messages = get_messages(current_user["name"], friend)
+        chat_log.configure(state="normal")
+        chat_log.delete("1.0", tk.END)
+        for ts in sorted(messages):
+            m = messages[ts]
+            chat_log.insert(tk.END, f"{m['from']}: {m['message']}\n")
+        chat_log.configure(state="disabled")
+
+    ttk.Button(win, text="Отправить", command=send).pack(pady=5)
+
+    def on_friend_select(event):
+        selected = friend_listbox.get(tk.ACTIVE)
+        if selected:
+            update_chat(selected)
+
+    friend_listbox.bind("<<ListboxSelect>>", on_friend_select)
+
+    # Начальное обновление
+    update_requests()
+    update_friends()
+
+def accept_friend(current_user, friend_username):
+    # Добавляем в друзья
+    requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
+    requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
+
+    # Удаляем из friend_requests
+    requests.delete(f"{FIREBASE_URL}/users/{current_user}/friend_requests/{friend_username}.json")
+    
     def send():
         friend = friend_listbox.get(tk.ACTIVE)
         msg = chat_entry.get()
@@ -177,15 +271,24 @@ def send_message(sender, recipient, message):
     requests.put(f"{FIREBASE_URL}/users/{recipient}/messages/{sender}/{timestamp}.json", json=data)
 
 def add_friend(current_user, friend_username):
-    # Проверка, существует ли друг
+    # Проверка, существует ли пользователь
     friend_url = f"{FIREBASE_URL}/users/{friend_username}.json"
     if not requests.get(friend_url).json():
         return False, "Такого пользователя нет"
 
-    # Добавляем друг другу
-    requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
-    requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
-    return True, "Друг добавлен"
+    # Проверка: уже друзья?
+    friends_url = f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json"
+    if requests.get(friends_url).json():
+        return False, "Вы уже друзья"
+
+    # Проверка: уже отправлен запрос?
+    req_url = f"{FIREBASE_URL}/users/{friend_username}/friend_requests/{current_user}.json"
+    if requests.get(req_url).json():
+        return False, "Запрос уже отправлен"
+
+    # Отправляем заявку в друзья
+    requests.put(req_url, json=True)
+    return True, "Запрос в друзья отправлен"
 
 def register_user(username, password):
     url = f"{FIREBASE_URL}/users/{username}.json"

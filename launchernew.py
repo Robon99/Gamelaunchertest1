@@ -52,7 +52,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.3.1"
+LAUNCHER_VERSION = "1.3.4"
 GAMES_FILE = "games.json"
 
 downloading_game = {"name": None}
@@ -64,6 +64,45 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def show_feedback_form():
+    win = tk.Toplevel()
+    win.title("Обратная связь")
+    win.geometry("400x300")
+    
+    tk.Label(win, text="Опишите вашу проблему или пожелание:", font=("Arial", 12)).pack(pady=10)
+    
+    text = tk.Text(win, wrap="word", height=10)
+    text.pack(padx=10, pady=5, fill="both", expand=True)
+    
+    def send_feedback():
+        message = text.get("1.0", tk.END).strip()
+        if not message:
+            messagebox.showwarning("Пусто", "Пожалуйста, введите сообщение.")
+            return
+        if send_discord_feedback(message):
+            messagebox.showinfo("Спасибо!", "Ваше сообщение отправлено!")
+            win.destroy()
+        else:
+            messagebox.showerror("Ошибка", "Не удалось отправить сообщение.")
+    
+    ttk.Button(win, text="Отправить", command=send_feedback).pack(pady=10)
+
+def send_discord_feedback(message):
+    webhook_url = "https://discord.com/api/webhooks/1388900373053444176/idHqfWKskBWULKZWCJILOF7JZf-933t-eRfcb2uz2NHHIeeoq0VUkPuD5hOQWPJgLbxF"
+    data = {
+        "content": f"📢 Новый отзыв от пользователя:\n```{message}```"
+    }
+    try:
+        response = requests.post(webhook_url, json=data)
+        if response.status_code == 204:
+            return True
+        else:
+            print("Ошибка Discord:", response.text)
+            return False
+    except Exception as e:
+        print("Ошибка отправки:", e)
+        return False
 
 def search_games(*args):
     query = search_var.get().lower()
@@ -388,6 +427,10 @@ add_hover_effect(delete_button)
 delete_button.pack_forget()
 
 delete_button.config(command=lambda: delete_game(current_game))
+
+btn_feedback = ttk.Button(left_buttons_frame, text="📢 Жалоба", command=lambda: show_feedback_form())
+btn_feedback.pack(side="left", padx=5, pady=5)
+add_hover_effect(btn_feedback)
 
 progress = ttk.Progressbar(main_panel, orient="horizontal", length=400, mode="determinate")
 progress.pack(pady=5)

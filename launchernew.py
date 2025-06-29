@@ -21,6 +21,8 @@ import time
 from pypresence import Presence
 import pythoncom
 
+FIREBASE_URL = "https://corsar-launcher-default-rtdb.firebaseio.com/"
+
 PLAYED_TIME_FILE = "played_time.json"
 played_time = {}
 
@@ -55,6 +57,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 LAUNCHER_VERSION = "1.3.4"
 GAMES_FILE = "games.json"
 
+current_user = {"name": None}
 downloading_game = {"name": None}
 age_confirmed = {}
 user_versions = {}
@@ -64,6 +67,144 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def show_friends_window():
+    if not current_user["name"]:
+        messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
+        return
+
+    win = tk.Toplevel()
+    win.title("Друзья и чат")
+    win.geometry("400x500")
+
+    tk.Label(win, text="Добавить друга:").pack()
+    entry_friend = tk.Entry(win)
+    entry_friend.pack()
+
+    def add():
+        ok, msg = add_friend(current_user["name"], entry_friend.get())
+        messagebox.showinfo("Результат", msg)
+        update_list()
+
+    ttk.Button(win, text="Добавить", command=add).pack()
+
+    tk.Label(win, text="Мои друзья:").pack()
+    friend_listbox = tk.Listbox(win)
+    friend_listbox.pack(fill="both", expand=True)
+
+    chat_log = tk.Text(win, height=10)
+    chat_log.pack()
+    chat_log.configure(state="disabled")
+
+    chat_entry = tk.Entry(win)
+    chat_entry.pack(fill="x")
+
+    def send():
+        friend = friend_listbox.get(tk.ACTIVE)
+        msg = chat_entry.get()
+        if friend and msg:
+            send_message(current_user["name"], friend, msg)
+            chat_entry.delete(0, tk.END)
+            update_chat()
+
+    ttk.Button(win, text="Отправить", command=send).pack(pady=5)
+
+    def update_list():
+        friend_listbox.delete(0, tk.END)
+        friends = get_friends(current_user["name"])
+        for f in friends:
+            friend_listbox.insert(tk.END, f)
+
+    def update_chat(*args):
+        friend = friend_listbox.get(tk.ACTIVE)
+        if not friend: return
+        chat_log.configure(state="normal")
+        chat_log.delete(1.0, tk.END)
+        msgs = get_messages(current_user["name"], friend)
+        for ts in sorted(msgs):
+            m = msgs[ts]
+            chat_log.insert(tk.END, f"{m['from']}: {m['message']}\n")
+        chat_log.configure(state="disabled")
+
+    friend_listbox.bind("<<ListboxSelect>>", update_chat)
+    update_list()
+
+def show_account_window():
+    win = tk.Toplevel()
+    win.title("Аккаунт")
+    win.geometry("300x250")
+
+    tk.Label(win, text="Имя пользователя:").pack()
+    entry_user = tk.Entry(win)
+    entry_user.pack()
+
+    tk.Label(win, text="Пароль:").pack()
+    entry_pass = tk.Entry(win, show="*")
+    entry_pass.pack()
+
+    status = tk.Label(win, text="", fg="red")
+    status.pack()
+
+    def login():
+        ok, msg = login_user(entry_user.get(), entry_pass.get())
+        status.config(text=msg, fg="green" if ok else "red")
+        if ok:
+            current_user["name"] = entry_user.get()
+            win.destroy()
+
+    def register():
+        ok, msg = register_user(entry_user.get(), entry_pass.get())
+        status.config(text=msg, fg="green" if ok else "red")
+
+    ttk.Button(win, text="Войти", command=login).pack(pady=5)
+    ttk.Button(win, text="Регистрация", command=register).pack()
+
+def get_messages(user, friend):
+    url = f"{FIREBASE_URL}/users/{user}/messages/{friend}.json"
+    response = requests.get(url)
+    return response.json() or {}
+
+def send_message(sender, recipient, message):
+    timestamp = str(int(time.time()))
+    data = {
+        "from": sender,
+        "to": recipient,
+        "message": message,
+        "time": timestamp
+    }
+    # Сообщение сохраняется у обоих
+    requests.put(f"{FIREBASE_URL}/users/{sender}/messages/{recipient}/{timestamp}.json", json=data)
+    requests.put(f"{FIREBASE_URL}/users/{recipient}/messages/{sender}/{timestamp}.json", json=data)
+
+def add_friend(current_user, friend_username):
+    # Проверка, существует ли друг
+    friend_url = f"{FIREBASE_URL}/users/{friend_username}.json"
+    if not requests.get(friend_url).json():
+        return False, "Такого пользователя нет"
+
+    # Добавляем друг другу
+    requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
+    requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
+    return True, "Друг добавлен"
+
+def register_user(username, password):
+    url = f"{FIREBASE_URL}/users/{username}.json"
+    response = requests.get(url)
+    if response.json():
+        return False, "Пользователь уже существует"
+    data = {"password": password, "friends": {}, "messages": {}}
+    requests.put(url, json=data)
+    return True, "Регистрация успешна"
+
+def login_user(username, password):
+    url = f"{FIREBASE_URL}/users/{username}.json"
+    response = requests.get(url)
+    data = response.json()
+    if not data:
+        return False, "Пользователь не найден"
+    if data.get("password") != password:
+        return False, "Неверный пароль"
+    return True, "Успешный вход"
 
 def show_feedback_form():
     win = tk.Toplevel()
@@ -394,6 +535,14 @@ game_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
 left_buttons_frame = tk.Frame(left_panel, bg="#1c1c1c")
 left_buttons_frame.pack(fill="x")
+
+btn_account = ttk.Button(left_buttons_frame, text="👤 Аккаунт", command=show_account_window)
+btn_account.pack(side="left", padx=5, pady=5)
+add_hover_effect(btn_account)
+
+btn_friends = ttk.Button(left_buttons_frame, text="👥 Друзья", command=show_friends_window)
+btn_friends.pack(side="left", padx=5, pady=5)
+add_hover_effect(btn_friends)
 
 main_panel = tk.Frame(root, bg="#1c1c1c")
 main_panel.pack(side="right", fill="both", expand=True)

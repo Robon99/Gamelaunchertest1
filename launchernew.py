@@ -54,7 +54,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.4.1"
+LAUNCHER_VERSION = "1.4.3"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -67,161 +67,6 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
-
-def get_friend_requests(current_user):
-    url = f"{FIREBASE_URL}/users/{current_user}/friend_requests.json"
-    response = requests.get(url)
-    return response.json() or {}
-
-def show_friends_window():
-    if not current_user["name"]:
-        messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
-        return
-
-    win = tk.Toplevel()
-    win.title("Друзья и чат")
-    win.geometry("500x600")
-
-    # ===== Добавить друга =====
-    tk.Label(win, text="Добавить друга:").pack()
-    entry_friend = tk.Entry(win)
-    entry_friend.pack()
-
-    def add():
-        ok, msg = add_friend(current_user["name"], entry_friend.get())
-        messagebox.showinfo("Результат", msg)
-        update_requests()
-        update_friends()
-
-    ttk.Button(win, text="Добавить", command=add).pack(pady=5)
-
-    # ===== Входящие заявки =====
-    tk.Label(win, text="Заявки в друзья:").pack()
-    request_listbox = tk.Listbox(win, height=5)
-    request_listbox.pack(fill="x", pady=5)
-
-    def accept_selected_request():
-        selected = request_listbox.get(tk.ACTIVE)
-        if selected:
-            accept_friend(current_user["name"], selected)
-            messagebox.showinfo("Готово", f"{selected} теперь ваш друг!")
-            update_requests()
-            update_friends()
-
-    ttk.Button(win, text="Принять заявку", command=accept_selected_request).pack()
-
-    # ===== Список друзей =====
-    tk.Label(win, text="Мои друзья:").pack()
-    friend_listbox = tk.Listbox(win)
-    friend_listbox.pack(fill="both", expand=True)
-
-    # ===== Чат =====
-    chat_log = tk.Text(win, height=10)
-    chat_log.pack()
-    chat_log.configure(state="disabled")
-
-    chat_entry = tk.Entry(win)
-    chat_entry.pack(fill="x")
-
-    def update_requests():
-        request_listbox.delete(0, tk.END)
-        requests_data = get_friend_requests(current_user["name"])
-        for name in requests_data:
-            request_listbox.insert(tk.END, name)
-
-    def update_friends():
-        friend_listbox.delete(0, tk.END)
-        friends = get_friends(current_user["name"])
-        for name in friends:
-            friend_listbox.insert(tk.END, name)
-
-    def get_friends(username):
-        url = f"{FIREBASE_URL}/users/{username}/friends.json"
-        response = requests.get(url)
-        return response.json() or {}
-
-    def get_friend_requests(username):
-        url = f"{FIREBASE_URL}/users/{username}/friend_requests.json"
-        response = requests.get(url)
-        return response.json() or {}
-
-    def accept_friend(current_user, friend_username):
-        # Добавить друг друга
-        requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
-        requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
-        # Удалить запрос
-        requests.delete(f"{FIREBASE_URL}/users/{current_user}/friend_requests/{friend_username}.json")
-
-    def send():
-        msg = chat_entry.get().strip()
-        if not msg:
-            return
-        selected = friend_listbox.get(tk.ACTIVE)
-        if not selected:
-            return
-        send_message(current_user["name"], selected, msg)
-        chat_entry.delete(0, tk.END)
-        update_chat(selected)
-
-    def update_chat(friend):
-        messages = get_messages(current_user["name"], friend)
-        chat_log.configure(state="normal")
-        chat_log.delete("1.0", tk.END)
-        for ts in sorted(messages):
-            m = messages[ts]
-            chat_log.insert(tk.END, f"{m['from']}: {m['message']}\n")
-        chat_log.configure(state="disabled")
-
-    ttk.Button(win, text="Отправить", command=send).pack(pady=5)
-
-    def on_friend_select(event):
-        selected = friend_listbox.get(tk.ACTIVE)
-        if selected:
-            update_chat(selected)
-
-    friend_listbox.bind("<<ListboxSelect>>", on_friend_select)
-
-    # Начальное обновление
-    update_requests()
-    update_friends()
-
-def accept_friend(current_user, friend_username):
-    # Добавляем в друзья
-    requests.put(f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json", json=True)
-    requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user}.json", json=True)
-
-    # Удаляем из friend_requests
-    requests.delete(f"{FIREBASE_URL}/users/{current_user}/friend_requests/{friend_username}.json")
-    
-    def send():
-        friend = friend_listbox.get(tk.ACTIVE)
-        msg = chat_entry.get()
-        if friend and msg:
-            send_message(current_user["name"], friend, msg)
-            chat_entry.delete(0, tk.END)
-            update_chat()
-
-    ttk.Button(win, text="Отправить", command=send).pack(pady=5)
-
-    def update_list():
-        friend_listbox.delete(0, tk.END)
-        friends = get_friends(current_user["name"])
-        for f in friends:
-            friend_listbox.insert(tk.END, f)
-
-    def update_chat(*args):
-        friend = friend_listbox.get(tk.ACTIVE)
-        if not friend: return
-        chat_log.configure(state="normal")
-        chat_log.delete(1.0, tk.END)
-        msgs = get_messages(current_user["name"], friend)
-        for ts in sorted(msgs):
-            m = msgs[ts]
-            chat_log.insert(tk.END, f"{m['from']}: {m['message']}\n")
-        chat_log.configure(state="disabled")
-
-    friend_listbox.bind("<<ListboxSelect>>", update_chat)
-    update_list()
 
 def show_account_window():
     win = tk.Toplevel()
@@ -253,42 +98,143 @@ def show_account_window():
     ttk.Button(win, text="Войти", command=login).pack(pady=5)
     ttk.Button(win, text="Регистрация", command=register).pack()
 
-def get_messages(user, friend):
-    url = f"{FIREBASE_URL}/users/{user}/messages/{friend}.json"
+def get_friend_requests(current_user):
+    url = f"{FIREBASE_URL}/users/{current_user}/friend_requests.json"
     response = requests.get(url)
     return response.json() or {}
 
-def send_message(sender, recipient, message):
-    timestamp = str(int(time.time()))
-    data = {
-        "from": sender,
-        "to": recipient,
-        "message": message,
-        "time": timestamp
-    }
-    # Сообщение сохраняется у обоих
-    requests.put(f"{FIREBASE_URL}/users/{sender}/messages/{recipient}/{timestamp}.json", json=data)
-    requests.put(f"{FIREBASE_URL}/users/{recipient}/messages/{sender}/{timestamp}.json", json=data)
+def show_friends_window():
+    if not current_user.get("name"):
+        messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
+        return
 
-def add_friend(current_user, friend_username):
-    # Проверка, существует ли пользователь
-    friend_url = f"{FIREBASE_URL}/users/{friend_username}.json"
-    if not requests.get(friend_url).json():
-        return False, "Такого пользователя нет"
+    win = tk.Toplevel()
+    win.title("Друзья и чат")
+    win.geometry("500x600")
 
-    # Проверка: уже друзья?
-    friends_url = f"{FIREBASE_URL}/users/{current_user}/friends/{friend_username}.json"
-    if requests.get(friends_url).json():
-        return False, "Вы уже друзья"
+    # ===== Добавить друга =====
+    tk.Label(win, text="Добавить друга:").pack(pady=(10, 0))
+    entry_friend = tk.Entry(win)
+    entry_friend.pack(pady=5)
 
-    # Проверка: уже отправлен запрос?
-    req_url = f"{FIREBASE_URL}/users/{friend_username}/friend_requests/{current_user}.json"
-    if requests.get(req_url).json():
-        return False, "Запрос уже отправлен"
+    def add():
+        friend_name = entry_friend.get().strip()
+        if not friend_name:
+            messagebox.showwarning("Ошибка", "Введите имя друга.")
+            return
+        ok, msg = add_friend(current_user["name"], friend_name)
+        messagebox.showinfo("Результат", msg)
+        update_requests()
+        update_friends()
 
-    # Отправляем заявку в друзья
-    requests.put(req_url, json=True)
-    return True, "Запрос в друзья отправлен"
+    ttk.Button(win, text="Добавить", command=add).pack(pady=(0, 10))
+
+    # ===== Входящие заявки =====
+    tk.Label(win, text="Заявки в друзья:").pack()
+    request_listbox = tk.Listbox(win, height=5)
+    request_listbox.pack(fill="x", pady=5)
+
+    def accept_selected_request():
+        if not request_listbox.curselection():
+            messagebox.showwarning("Ошибка", "Выберите заявку.")
+            return
+        selected = request_listbox.get(request_listbox.curselection()[0])
+        accept_friend(current_user["name"], selected)
+        messagebox.showinfo("Готово", f"{selected} теперь ваш друг!")
+        update_requests()
+        update_friends()
+
+    ttk.Button(win, text="Принять заявку", command=accept_selected_request).pack(pady=(0, 10))
+
+    # ===== Список друзей =====
+    tk.Label(win, text="Мои друзья:").pack()
+    friend_listbox = tk.Listbox(win)
+    friend_listbox.pack(fill="both", expand=True, pady=5)
+
+    # ===== Чат =====
+    chat_log = tk.Text(win, height=10, state="disabled")
+    chat_log.pack(fill="both", padx=5, pady=5)
+
+    chat_entry = tk.Entry(win)
+    chat_entry.pack(fill="x", padx=5, pady=(0, 10))
+
+    def update_requests():
+        request_listbox.delete(0, tk.END)
+        requests_data = get_friend_requests(current_user["name"])
+        for name in requests_data:
+            request_listbox.insert(tk.END, name)
+
+    def update_friends():
+        friend_listbox.delete(0, tk.END)
+        friends = get_friends(current_user["name"])
+        for name in friends:
+            friend_listbox.insert(tk.END, name)
+
+    def get_friends(username):
+        url = f"{FIREBASE_URL}/users/{username}/friends.json"
+        response = requests.get(url)
+        data = response.json()
+        if isinstance(data, dict):
+            return list(data.keys())
+        elif isinstance(data, list):
+            return data
+        return []
+
+    def get_friend_requests(username):
+        url = f"{FIREBASE_URL}/users/{username}/friend_requests.json"
+        response = requests.get(url)
+        data = response.json()
+        if isinstance(data, dict):
+            return list(data.keys())
+        elif isinstance(data, list):
+            return data
+        return []
+
+    def accept_friend(current_user_name, friend_username):
+        # Добавить друг друга
+        requests.put(f"{FIREBASE_URL}/users/{current_user_name}/friends/{friend_username}.json", json=True)
+        requests.put(f"{FIREBASE_URL}/users/{friend_username}/friends/{current_user_name}.json", json=True)
+        # Удалить заявку
+        requests.delete(f"{FIREBASE_URL}/users/{current_user_name}/friend_requests/{friend_username}.json")
+
+    def send():
+        msg = chat_entry.get().strip()
+        if not msg:
+            return
+        if not friend_listbox.curselection():
+            messagebox.showwarning("Ошибка", "Выберите друга для отправки сообщения.")
+            return
+        selected = friend_listbox.get(friend_listbox.curselection()[0])
+        send_message(current_user["name"], selected, msg)
+        chat_entry.delete(0, tk.END)
+        update_chat(selected)
+
+    def update_chat(friend=None):
+        if friend is None:
+            if not friend_listbox.curselection():
+                return
+            friend = friend_listbox.get(friend_listbox.curselection()[0])
+        messages = get_messages(current_user["name"], friend)
+        chat_log.configure(state="normal")
+        chat_log.delete("1.0", tk.END)
+        for ts in sorted(messages, key=int):
+            m = messages[ts]
+            chat_log.insert(tk.END, f"{m['from']}: {m['message']}\n")
+        chat_log.configure(state="disabled")
+
+    def on_friend_select(event):
+        if not friend_listbox.curselection():
+            return
+        selected = friend_listbox.get(friend_listbox.curselection()[0])
+        update_chat(selected)
+
+    friend_listbox.bind("<<ListboxSelect>>", on_friend_select)
+
+    ttk.Button(win, text="Отправить", command=send).pack(pady=5)
+
+    # Начальное обновление списков
+    update_requests()
+    update_friends()
 
 def register_user(username, password):
     url = f"{FIREBASE_URL}/users/{username}.json"

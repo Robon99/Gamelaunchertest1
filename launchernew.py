@@ -52,7 +52,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.3"
+LAUNCHER_VERSION = "1.3.1"
 GAMES_FILE = "games.json"
 
 downloading_game = {"name": None}
@@ -682,18 +682,18 @@ loading_label = tk.Label(loading_screen, text="Загрузка данных..."
 loading_label.pack(expand=True)
 
 def finish_loading():
-    search_games()
     load_settings()
     load_played_time()
     global_age_override["value"] = user_settings.get("age_confirmed", False)
-    load_images()
-    update_games_json()
+    update_games_json()  # обновить файл
     games.clear()
-    games.extend(load_games())
+    games.extend(load_games())  # загрузить игры после обновления
     visible_games.clear()
+    game_listbox.delete(0, tk.END)
     for game in games:
         game_listbox.insert(tk.END, game["name"])
         visible_games.append(game)
+    load_images()
     update_download_status()
     loading_screen.destroy()
     root.deiconify()

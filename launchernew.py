@@ -54,7 +54,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.4.5"
+LAUNCHER_VERSION = "1.5.0"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -67,6 +67,86 @@ active_downloads = 0
 download_button_state = {"enabled": True}
 current_game = {}
 global_age_override = {"value": False}
+
+def show_game_report_window():
+    if not current_user.get("name"):
+        messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
+        return
+
+    win = tk.Toplevel()
+    win.title("Пожаловаться на игру")
+    win.geometry("400x300")
+
+    tk.Label(win, text="Опишите проблему с этой игрой:", font=("Arial", 12)).pack(pady=10)
+
+    text = tk.Text(win, wrap="word", height=10)
+    text.pack(padx=10, pady=5, fill="both", expand=True)
+
+    def send_game_report():
+        message = text.get("1.0", tk.END).strip()
+        if not message:
+            messagebox.showwarning("Пусто", "Введите текст жалобы.")
+            return
+        content = f"🚨 Жалоба на игру: `{current_game['name']}` от `{current_user['name']}`\n```{message}```"
+        if send_discord_feedback(content):
+            messagebox.showinfo("Спасибо!", "Жалоба отправлена.")
+            win.destroy()
+        else:
+            messagebox.showerror("Ошибка", "Не удалось отправить жалобу.")
+
+    ttk.Button(win, text="Отправить", command=send_game_report).pack(pady=10)
+
+def show_comments_window():
+    if not current_user.get("name"):
+        messagebox.showwarning("Ошибка", "Сначала войдите в аккаунт.")
+        return
+
+    game_name = current_game["name"]
+    win = tk.Toplevel()
+    win.title(f"Комментарии — {game_name}")
+    win.geometry("500x400")
+
+    comments_box = tk.Text(win, state="disabled", wrap="word")
+    comments_box.pack(fill="both", expand=True, padx=10, pady=10)
+
+    entry = tk.Entry(win)
+    entry.pack(fill="x", padx=10)
+
+    def refresh_comments():
+        comments = get_comments(game_name)
+        comments_box.config(state="normal")
+        comments_box.delete("1.0", tk.END)
+        for ts in sorted(comments, key=int):
+            c = comments[ts]
+            comments_box.insert(tk.END, f"{c['from']}: {c['text']}\n")
+        comments_box.config(state="disabled")
+
+    def send_comment():
+        text = entry.get().strip()
+        if text:
+            post_comment(game_name, current_user["name"], text)
+            entry.delete(0, tk.END)
+            refresh_comments()
+
+    ttk.Button(win, text="Отправить", command=send_comment).pack(pady=5)
+    refresh_comments()
+
+def get_comments(game_name):
+    url = f"{FIREBASE_URL}/comments/{game_name}.json"
+    response = requests.get(url)
+    data = response.json()
+    return data or {}
+
+def post_comment(game_name, user_name, comment_text):
+    if not comment_text.strip():
+        return
+    timestamp = str(int(time.time() * 1000))
+    url = f"{FIREBASE_URL}/comments/{game_name}/{timestamp}.json"
+    payload = {
+        "from": user_name,
+        "text": comment_text
+    }
+    requests.put(url, json=payload)
 
 def add_friend(sender, recipient):
     # Проверим, что пользователь не отправляет заявку самому себе
@@ -557,6 +637,9 @@ def get_direct_gdrive_link(url):
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
     if match:
         return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
+    # Если уже id?export=download=id — возвращаем как есть
+    if 'uc?export=download&id=' in url:
+        return url
     return url
 
 def download_and_replace_launcher(url):
@@ -747,31 +830,42 @@ def threaded_download():
     update_download_status()
     user_versions[game['name']] = game['version']
     download_button.pack_forget()
-    url = game['download_url']
+
+    url = game.get('download_url')
     google_drive = game.get('google_drive', False)
     dest_path = os.path.join(GAMES_DIR, game['name'].replace(" ", "_") + ".zip")
 
     try:
+        if not url:
+            raise Exception("Ссылка на загрузку отсутствует.")
+
         update_progress("Скачивание...", 0)
 
         if google_drive:
-            gdown.download(get_direct_gdrive_link(url), dest_path, quiet=False)
+            print(f"[GDOWN] Загрузка с Google Drive: {url}")
+            result = gdown.download(get_direct_gdrive_link(url), dest_path, quiet=False, fuzzy=True)
+            if result is None:
+                raise Exception("Не удалось скачать файл с Google Drive. Проверьте доступность и формат ссылки.")
         else:
-            with requests.get(url, stream=True) as r:
-                r.raise_for_status()
-                total_length = r.headers.get('content-length')
-                with open(dest_path, 'wb') as f:
-                    if total_length is None:
-                        f.write(r.content)
-                    else:
-                        dl = 0
-                        total_length = int(total_length)
-                        for chunk in r.iter_content(chunk_size=4096):
-                            if chunk:
-                                f.write(chunk)
-                                dl += len(chunk)
-                                done = int(100 * dl / total_length)
-                                update_progress(f"Загрузка... {done}%", done)
+            print(f"[HTTP] Прямая загрузка: {url}")
+            r = requests.get(url, stream=True, timeout=30)
+            if r.status_code != 200:
+                raise Exception(f"HTTP ошибка: {r.status_code}")
+            total_length = r.headers.get('content-length')
+            with open(dest_path, 'wb') as f:
+                if total_length is None:
+                    if not r.content:
+                        raise Exception("Сервер вернул пустой файл.")
+                    f.write(r.content)
+                else:
+                    dl = 0
+                    total_length = int(total_length)
+                    for chunk in r.iter_content(chunk_size=4096):
+                        if chunk:
+                            f.write(chunk)
+                            dl += len(chunk)
+                            done = int(100 * dl / total_length)
+                            update_progress(f"Загрузка... {done}%", done)
 
         update_progress("Загрузка завершена ✅", 100)
         exe_path = extract_and_create_shortcut(dest_path, game['name'])
@@ -895,6 +989,14 @@ def show_admin_editor():
     tk.Checkbutton(win, text="Google Drive", variable=google_drive).pack()
     tk.Button(win, text="Добавить", command=add_game).pack(pady=5)
     tk.Button(win, text="Удалить выбранную игру", command=delete_selected_game).pack(pady=5)
+
+btn_report = ttk.Button(main_panel, text="🚨 Пожаловаться", command=show_game_report_window)
+btn_report.pack(pady=5)
+add_hover_effect(btn_report)
+
+btn_comments = ttk.Button(main_panel, text="💬 Комментарии", command=show_comments_window)
+btn_comments.pack(pady=5)
+add_hover_effect(btn_comments)
 
 btn_library = ttk.Button(left_buttons_frame, text="📚 Библиотека", command=lambda: show_library())
 btn_library.pack(side="left", padx=5, pady=5)

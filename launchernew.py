@@ -21,6 +21,8 @@ import time
 from pypresence import Presence
 import pythoncom
 
+USER_FILE = "user.json"
+
 FIREBASE_URL = "https://corsar-launcher-default-rtdb.firebaseio.com/"
 
 PLAYED_TIME_FILE = "played_time.json"
@@ -54,7 +56,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.5.0"
+LAUNCHER_VERSION = "1.5.2"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -195,7 +197,7 @@ def send_message(sender, recipient, message):
 def show_account_window():
     win = tk.Toplevel()
     win.title("Аккаунт")
-    win.geometry("300x250")
+    win.geometry("300x300")
 
     tk.Label(win, text="Имя пользователя:").pack()
     entry_user = tk.Entry(win)
@@ -209,18 +211,46 @@ def show_account_window():
     status.pack()
 
     def login():
-        ok, msg = login_user(entry_user.get(), entry_pass.get())
+        username = entry_user.get().strip()
+        password = entry_pass.get().strip()
+
+        if not username or not password:
+            status.config(text="Введите имя и пароль", fg="red")
+            return
+
+        ok, msg = login_user(username, password)
         status.config(text=msg, fg="green" if ok else "red")
+
         if ok:
-            current_user["name"] = entry_user.get()
+            current_user["name"] = username
+            try:
+                with open("user.json", "w", encoding="utf-8") as f:
+                    json.dump({"name": username, "password": password}, f)
+            except Exception as e:
+                print(f"Ошибка сохранения user.json: {e}")
             win.destroy()
 
     def register():
-        ok, msg = register_user(entry_user.get(), entry_pass.get())
+        username = entry_user.get().strip()
+        password = entry_pass.get().strip()
+
+        if not username or not password:
+            status.config(text="Введите имя и пароль", fg="red")
+            return
+
+        ok, msg = register_user(username, password)
         status.config(text=msg, fg="green" if ok else "red")
 
+    def logout():
+        current_user["name"] = None
+        if os.path.exists("user.json"):
+            os.remove("user.json")
+        status.config(text="Вы вышли из аккаунта.", fg="orange")
+
+    # ❗️ ЭТИ КНОПКИ ДОЛЖНЫ БЫТЬ ВНЕ ВНУТРЕННИХ ФУНКЦИЙ
     ttk.Button(win, text="Войти", command=login).pack(pady=5)
-    ttk.Button(win, text="Регистрация", command=register).pack()
+    ttk.Button(win, text="Регистрация", command=register).pack(pady=5)
+    ttk.Button(win, text="Выйти", command=logout).pack(pady=5)
 
 def get_friend_requests(current_user):
     url = f"{FIREBASE_URL}/users/{current_user}/friend_requests.json"
@@ -990,7 +1020,7 @@ def show_admin_editor():
     tk.Button(win, text="Добавить", command=add_game).pack(pady=5)
     tk.Button(win, text="Удалить выбранную игру", command=delete_selected_game).pack(pady=5)
 
-btn_report = ttk.Button(main_panel, text="🚨 Жалоба на игру", command=show_game_report_window)
+btn_report = ttk.Button(main_panel, text="🚨 Пожаловаться", command=show_game_report_window)
 btn_report.pack(pady=5)
 add_hover_effect(btn_report)
 
@@ -1067,6 +1097,22 @@ def load_images():
             image_cache[game["name"]] = photo
         except:
             image_cache[game["name"]] = None
+
+def load_saved_user():
+    if os.path.exists("user.json"):
+        try:
+            with open("user.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                name = data.get("name")
+                password = data.get("password")
+                if name and password:
+                    ok, _ = login_user(name, password)
+                    if ok:
+                        current_user["name"] = name
+        except Exception as e:
+            print(f"Ошибка при автологине: {e}")
+
+load_saved_user()
 
 threading.Thread(target=load_images, daemon=True).start()
 root.withdraw()

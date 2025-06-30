@@ -990,7 +990,7 @@ def show_admin_editor():
     tk.Button(win, text="Добавить", command=add_game).pack(pady=5)
     tk.Button(win, text="Удалить выбранную игру", command=delete_selected_game).pack(pady=5)
 
-btn_report = ttk.Button(main_panel, text="🚨 Пожаловаться", command=show_game_report_window)
+btn_report = ttk.Button(main_panel, text="🚨 Жалоба на игру", command=show_game_report_window)
 btn_report.pack(pady=5)
 add_hover_effect(btn_report)
 

@@ -56,7 +56,7 @@ os.makedirs(GAMES_DIR, exist_ok=True)
 
 load_dotenv()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-LAUNCHER_VERSION = "1.5.2"
+LAUNCHER_VERSION = "1.5.3"
 GAMES_FILE = "games.json"
 
 current_user = {"name": None}
@@ -459,10 +459,13 @@ def send_discord_feedback(message):
 
 def search_games(*args):
     query = search_var.get().lower()
+    selected_category = category_var.get()
     game_listbox.delete(0, tk.END)
     visible_games.clear()
     for game in games:
-        if query in game["name"].lower():
+        name_match = query in game["name"].lower()
+        cat_match = selected_category == "Все категории" or game.get("category") == selected_category
+        if name_match and cat_match:
             game_listbox.insert(tk.END, game["name"])
             visible_games.append(game)
 
@@ -745,6 +748,10 @@ search_entry.pack(padx=10, pady=5, fill="x")
 
 search_var.trace_add("write", lambda *args: search_games())
 
+category_var = tk.StringVar()
+category_dropdown = ttk.Combobox(left_panel, textvariable=category_var, state="readonly")
+category_dropdown.pack(padx=10, pady=5, fill="x")
+
 game_listbox = tk.Listbox(left_panel, bg="#2a2a2a", fg="#ff8800", font=("Arial", 12))
 game_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -851,6 +858,13 @@ def extract_and_create_shortcut(zip_path, game_name):
             print(f"Не удалось создать ярлык: {e}")
 
     return exe_path
+
+def update_category_list():
+    categories = sorted(set(g.get("category", "Без категории") for g in games))
+    category_dropdown["values"] = ["Все категории"] + categories
+    category_var.set("Все категории")
+
+update_category_list()
 
 def threaded_download():
     global active_downloads
@@ -970,11 +984,13 @@ def show_admin_panel():
 def show_admin_editor():
     win = tk.Toplevel()
     win.title("Редактор игр")
-    win.geometry("500x400")
+    win.geometry("500x500")
+
     def add_right_click_paste(entry):
         menu = tk.Menu(entry, tearoff=0)
         menu.add_command(label="Вставить", command=lambda: entry.insert(tk.INSERT, root.clipboard_get()))
         entry.bind("<Button-3>", lambda event: menu.tk_popup(event.x_root, event.y_root))
+
     def add_game():
         new_game = {
             "name": name.get(),
@@ -983,12 +999,15 @@ def show_admin_editor():
             "download_url": url.get(),
             "version": ver.get(),
             "adult_only": adult.get() == 1,
-            "google_drive": google_drive.get() == 1
+            "google_drive": google_drive.get() == 1,
+            "category": cat.get()
         }
         games.append(new_game)
         save_games()
         game_listbox.insert(tk.END, new_game["name"])
+        update_category_list()  # обновить категории
         win.destroy()
+
     def delete_selected_game():
         index = game_listbox.curselection()
         if not index:
@@ -1002,23 +1021,41 @@ def show_admin_editor():
                     break
             save_games()
             game_listbox.delete(index)
+            update_category_list()
             win.destroy()
+
+    # Поля ввода
     name = tk.Entry(win)
     desc = tk.Entry(win)
     img = tk.Entry(win)
     url = tk.Entry(win)
     ver = tk.Entry(win)
-    for entry in [name, desc, img, url, ver]:
+    cat = tk.Entry(win)  # ← поле для категории
+
+    for entry in [name, desc, img, url, ver, cat]:
         add_right_click_paste(entry)
+
     adult = tk.IntVar()
     google_drive = tk.IntVar()
-    for label, widget in zip(["Название", "Описание", "Картинка URL", "Ссылка", "Версия"], [name, desc, img, url, ver]):
+
+    for label, widget in zip(
+        ["Название", "Описание", "Картинка URL", "Ссылка", "Версия", "Категория"],
+        [name, desc, img, url, ver, cat]
+    ):
         tk.Label(win, text=label).pack()
         widget.pack()
+
     tk.Checkbutton(win, text="18+", variable=adult).pack()
     tk.Checkbutton(win, text="Google Drive", variable=google_drive).pack()
+
     tk.Button(win, text="Добавить", command=add_game).pack(pady=5)
     tk.Button(win, text="Удалить выбранную игру", command=delete_selected_game).pack(pady=5)
+
+    # Список игр
+    game_listbox = tk.Listbox(win)
+    for game in games:
+        game_listbox.insert(tk.END, game["name"])
+    game_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
 btn_report = ttk.Button(main_panel, text="🚨 Пожаловаться", command=show_game_report_window)
 btn_report.pack(pady=5)
